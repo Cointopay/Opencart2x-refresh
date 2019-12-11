@@ -1,4 +1,5 @@
 <?php
+
 class ControllerExtensionPaymentCoinToPay extends Controller 
 {
 	public function index() 
@@ -7,12 +8,23 @@ class ControllerExtensionPaymentCoinToPay extends Controller
                 
 		$this->load->model('checkout/order');
 
-		$order_info = $this->model_checkout_order->getOrder($this->session->data['order_id']);
+    $order_info = "Session order_id is empty cannot proceed with your request";
+
+		if (isset($this->session->data['order_id'])) {
+			$order_info = $this->model_checkout_order->getOrder($this->session->data['order_id']);
+		}
+		else
+		{
+			echo $order_info;
+			return;
+		}
+		try {
+	
         if (($this->request->server['REQUEST_METHOD'] == 'POST')) 
         {
         
             $formData = $this->request->post;
-
+			
             $url = trim($this->c2pCreateInvoice($this->request->post)).'&output=json';
             $ch = curl_init($url);
             //curl_setopt($ch, CURLOPT_RETURNTRANSFER, 3);
@@ -22,30 +34,38 @@ class ControllerExtensionPaymentCoinToPay extends Controller
             $output = curl_exec($ch);
             curl_close($ch);
             $php_arr = json_decode($output);
-           
+            
             $data1 = array();    
             
             $this->load->language('extension/payment/cointopay_invoice');   
             
             if($php_arr->error == '' || empty($php_arr->error))
             {
-                $this->model_checkout_order->addOrderHistory($php_arr->CustomerReferenceNr, $this->config->get('cointopay_order_status_id'));
+                $this->model_checkout_order->addOrderHistory($php_arr->CustomerReferenceNr, $this->config->get('payment_cointopay_order_status_id'));
+				
+								//print_r($php_arr);
             
-                $data1['TransactionID'] = $php_arr->TransactionID;
+								$data1['TransactionID'] = $php_arr->TransactionID;
+								$data1['AltCoinID'] = $php_arr->AltCoinID;
                 $data1['coinAddress'] = $php_arr->coinAddress;
                 $data1['Amount'] = $php_arr->Amount;
                 $data1['CoinName'] = $php_arr->CoinName;
                 $data1['QRCodeURL'] = $php_arr->QRCodeURL;
                 $data1['RedirectURL'] = $php_arr->RedirectURL;
-                
+				$data1['ExpiryTime'] = $php_arr->ExpiryTime;
+				$data1['CalExpiryTime'] = date("m/d/Y h:i:s T",strtotime($php_arr->ExpiryTime));
+				$data1['OrderID'] = $this->session->data['order_id'];
+				$data1['CustomerReferenceNr'] = $php_arr->CustomerReferenceNr;
+				$data1['status'] = $php_arr->Status;
                 $data1['text_title'] = $this->language->get('text_title');
                 $data1['text_transaction_id'] = $this->language->get('text_transaction_id');
                 $data1['text_address'] = $this->language->get('text_address');
                 $data1['text_amount'] = $this->language->get('text_amount');
                 $data1['text_coinname'] = $this->language->get('text_coinname');
+								$data1['text_checkout_number'] = $this->language->get('text_checkout_number');
+                $data1['text_expiry'] = $this->language->get('text_expiry');
                 $data1['text_pay_with_other'] = $this->language->get('text_pay_with_other');
                 $data1['text_clickhere'] = $this->language->get('text_clickhere');
-
             }
             else
             {
@@ -74,7 +94,7 @@ class ControllerExtensionPaymentCoinToPay extends Controller
             }
             $data1['footer'] = $this->load->controller('common/footer');
             $data1['header'] = $this->load->controller('common/header');
-            if (file_exists(DIR_TEMPLATE . $this->config->get('config_template') . '/template/extension/payment/cointopay_invoice.tpl')) 
+            if (file_exists(DIR_TEMPLATE . $this->config->get('config_template') . '/template/extension/payment/cointopay_invoice')) 
             {
                 $this->response->setOutput($this->load->view($this->config->get('config_template') . '/template/extension/payment/cointopay_invoice.tpl', $data1));
             } 
@@ -90,9 +110,9 @@ class ControllerExtensionPaymentCoinToPay extends Controller
             $data['action'] = $this->url->link('extension/payment/cointopay');
 
             $data['price'] = $this->currency->format($order_info['total'], $order_info['currency_code'], $order_info['currency_value'], false);
-            $data['key'] = $this->config->get('cointopay_api_key');
-            $data['AltCoinID'] = $this->config->get('cointopay_crypto_coin');
-            $data['crypto_coins'] = $this->getMerchantCoins($this->config->get('cointopay_merchantID'));
+            $data['key'] = $this->config->get('payment_cointopay_api_key');
+            $data['AltCoinID'] = $this->config->get('payment_cointopay_crypto_coin');
+            $data['crypto_coins'] = $this->getMerchantCoins($this->config->get('payment_cointopay_merchantID'));
             $data['OrderID'] = $this->session->data['order_id'];
             $data['currency'] = $order_info['currency_code'];
             
@@ -107,44 +127,40 @@ class ControllerExtensionPaymentCoinToPay extends Controller
                 return $this->load->view('extension/payment/cointopay.tpl', $data);
             }
         }
+        
+        } catch (Exception $e) {
+    			echo 'Caught exception: ',  $e->getMessage(), "\n";
+    			return;
+			}
 	}
 
 	public function callback() 
     {
         $data = array();
         $this->load->language('extension/payment/cointopay_invoice');
-        if(isset($_GET['CustomerReferenceNr']) && isset($_GET['TransactionID']) && isset($_GET['status']))
+        if(isset($_REQUEST['status']))
         {
-            $data = [ 
+          /*  $data = [ 
                         'mid' => $this->config->get('cointopay_account') , 
                         'TransactionID' => $_GET['TransactionID'] ,
                         'ConfirmCode' => $_GET['ConfirmCode']
                     ];
-            $response = $this->validateOrder($data);
+            $response = $this->validateOrder($data);*/
      
-            if($response->Status !== $_GET['status'])
+            /*if($response->Status !== $_GET['status'])
             {
                 echo "We have detected different order status. Your order has been halted.";
                 exit;
-            }
-            elseif($response->CustomerReferenceNr == $_GET['CustomerReferenceNr'])
-            {
+            }*/
+            //if($response->CustomerReferenceNr == $_GET['CustomerReferenceNr'])
+           // {
                 $this->load->model('checkout/order');
             
-                if($_GET['status'] == 'paid' AND  $_GET['notenough'] == '0')
+                if($_REQUEST['status'] == 'paid')
                 {
-                    $this->model_checkout_order->addOrderHistory($_GET['CustomerReferenceNr'], $this->config->get('cointopay_callback_success_order_status_id','Successfully Paid'));
-                } 
-                elseif($_GET['status'] == 'paid' AND  $_GET['notenough'] == '1')
-                {
-                    $statusProcessed = 15;
-                    $this->model_checkout_order->addOrderHistory($_GET['CustomerReferenceNr'], $statusProcessed,'Low Balanace');
-                }  
-                elseif ($_GET['status'] == 'failed') 
-                {
-                    $this->model_checkout_order->addOrderHistory($_GET['?CustomerReferenceNr'], $this->config->get('cointopay_callback_failed_order_status_id','Transaction payment failed'));
-                }
-                $data['text_success'] = $this->language->get('text_success');
+					
+                    $this->model_checkout_order->addOrderHistory($_REQUEST['CustomerReferenceNr'], $this->config->get('cointopay_callback_success_order_status_id','Successfully Paid'));
+					$data['text_success'] = $this->language->get('text_success');
                 $data['footer'] = $this->load->controller('common/footer');
                 $data['header'] = $this->load->controller('common/header');
                 
@@ -156,19 +172,59 @@ class ControllerExtensionPaymentCoinToPay extends Controller
                 {
                     $this->response->setOutput($this->load->view('extension/payment/cointopay_success.tpl', $data));
                 }
+                } 
+                /*elseif($_GET['status'] == 'paid' AND  $_GET['notenough'] == '1')
+                {
+                    $statusProcessed = 15;
+                  */  //$this->model_checkout_order->addOrderHistory($_GET['CustomerReferenceNr'], $statusProcessed,'Low Balanace');
+               // }  
+                elseif ($_REQUEST['status'] == 'failed') 
+                {
+                    $this->model_checkout_order->addOrderHistory($_REQUEST['CustomerReferenceNr'], $this->config->get('payment_cointopay_callback_failed_order_status_id','Transaction payment failed'));
+                
+                $data['text_failed'] = $this->language->get('text_failed');
+                $data['footer'] = $this->load->controller('common/footer');
+                $data['header'] = $this->load->controller('common/header');
+                
+                if (file_exists(DIR_TEMPLATE . $this->config->get('config_template') . '/template/extension/payment/cointopay_failed.tpl')) 
+                {
+                    $this->response->setOutput($this->load->view($this->config->get('config_template') . '/template/extension/payment/cointopay_failed.tpl', $data));
+                } 
+                else 
+                {
+                    $this->response->setOutput($this->load->view('extension/payment/cointopay_failed.tpl', $data));
+                }
+				}
+				elseif ($_REQUEST['status'] == 'expired') 
+                {
+                    $this->model_checkout_order->addOrderHistory($_REQUEST['CustomerReferenceNr'], $this->config->get('payment_cointopay_callback_failed_order_status_id','Transaction payment failed'));
+                
+                $data['text_failed'] = $this->language->get('text_expired');
+                $data['footer'] = $this->load->controller('common/footer');
+                $data['header'] = $this->load->controller('common/header');
+                
+                if (file_exists(DIR_TEMPLATE . $this->config->get('config_template') . '/template/extension/payment/cointopay_failed.tpl')) 
+                {
+                    $this->response->setOutput($this->load->view($this->config->get('config_template') . '/template/extension/payment/cointopay_failed.tpl', $data));
+                } 
+                else 
+                {
+                    $this->response->setOutput($this->load->view('extension/payment/cointopay_failed.tpl', $data));
+                }
+				}
             }
-            else
+            /*else
             {
                 echo "We have detected changes in order status. Your order has been halted.";
                 exit;
-            }
-        }
+         }*/
+       // }
 	}
         
     function c2pCreateInvoice($data) 
     {
-        $response = $this->c2pCurl('https://cointopay.com/REAPI?key='.$data['key'].'&price='.$data['price'].'&AltCoinID='.$data['AltCoinID'].'&OrderID='.$data['OrderID'].'&inputCurrency='.$data['currency'], $data['key']);
-        return $response;
+        $response = $this->c2pCurl('https://app.cointopay.com/REAPI?key='.$data['key'].'&price='.$data['price'].'&AltCoinID='.$data['AltCoinID'].'&OrderID='.$data['OrderID'].'&inputCurrency='.$data['currency'], $data['key']);        
+		return $response;
     }
     
     public function c2pCurl($url, $apiKey, $post = false) 
@@ -216,7 +272,7 @@ class ControllerExtensionPaymentCoinToPay extends Controller
         
     function getMerchantCoins($merchantId)
     {
-        $url = 'https://cointopay.com/CloneMasterTransaction?MerchantID='.$merchantId.'&output=json';
+        $url = 'https://app.cointopay.com/CloneMasterTransaction?MerchantID='.$merchantId.'&output=json';
         $ch = curl_init($url);
         //print_r($ch);
         /*curl_setopt($ch, CURLOPT_RETURNTRANSFER, 3);
@@ -245,6 +301,29 @@ class ControllerExtensionPaymentCoinToPay extends Controller
         }
         return $new_php_arr;
     }
+	public function getCoinsPaymentUrl() 
+    {
+        $data = array();
+        $this->load->language('extension/payment/cointopay_invoice');
+        if(isset($_REQUEST['TransactionID']))
+        {
+			 $url = 'https://app.cointopay.com/CloneMasterTransaction?MerchantID='.$this->config->get("payment_cointopay_merchantID").'&TransactionID='.$_REQUEST["TransactionID"].'&output=json';
+        $ch = curl_init($url);
+        //print_r($ch);
+        /*curl_setopt($ch, CURLOPT_RETURNTRANSFER, 3);
+        $output = curl_exec($ch);
+        curl_close($ch);*/
+
+
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_URL,$url);
+        $output=curl_exec($ch);
+        curl_close($ch);
+		$decoded = json_decode($output);
+        echo $output;
+		}
+	}
 
     function  validateOrder($data)
     {
@@ -268,11 +347,11 @@ class ControllerExtensionPaymentCoinToPay extends Controller
         );
         $response = curl_exec($ch);
         $results = json_decode($response);
-        if($results->CustomerReferenceNr)
-        {
+       // if($results->CustomerReferenceNr)
+       // {
             return $results;
-        }
-        echo $response;
+       // }
+       // echo $response;
     }
 }
 
