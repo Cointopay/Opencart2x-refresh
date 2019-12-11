@@ -129,6 +129,11 @@ class ControllerextensionPaymentCoinToPay extends Controller {
 		} else {
 			$data['cointopay_status'] = $this->config->get('cointopay_status');
 		}
+		if (isset($this->request->post['payment_cointopay_sort_order'])) {
+			$data['cointopay_sort_order'] = $this->request->post['cointopay_sort_order'];
+		} else {
+			$data['cointopay_sort_order'] = $this->config->get('cointopay_sort_order');
+		}
                 
                 if (isset($this->request->post['cointopay_crypto_coin'])) {
 			$data['cointopay_crypto_coin'] = $this->request->post['cointopay_crypto_coin'];

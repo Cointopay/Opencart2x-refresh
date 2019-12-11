@@ -36,7 +36,7 @@ $_['entry_merchantID']                                   = 'Merchant ID';
 //$_['entry_voided_status']		     = 'Voided Status';
 //$_['entry_geo_zone']				 = 'Geo Zone';
 //$_['entry_status']					 = 'Status';
-//$_['entry_sort_order']				 = 'Sort Order';
+$_['entry_sort_order']				 = 'Sort Order';
 
 // Help
 $_['help_api_key_hint']                                  = 'Get this at cointopay.com under Account.';
